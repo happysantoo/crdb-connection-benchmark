@@ -1,0 +1,112 @@
+# Example: Simple benchmark configuration for testing
+
+regions:
+  - name: local
+    jdbcUrl: "jdbc:postgresql://localhost:26257/defaultdb?sslmode=disable"
+    username: "root"
+    password: ""
+    datacenters: []
+
+connectionPool:
+  testPoolSizes: [10, 25, 50, 100]
+  hikari:
+    connectionTimeout: 30000
+    idleTimeout: 600000
+    maxLifetime: 1800000
+    minimumIdle: 5
+    leakDetectionThreshold: 60000
+  distributionStrategy: "EQUAL"
+
+benchmark:
+  durationSeconds: 60
+  warmupSeconds: 10
+  cooldownSeconds: 5
+  iterations: 1
+  workloadPatterns:
+    - MIXED
+  virtualThreads:
+    enabled: true
+    maxConcurrency: 1000
+    structuredConcurrency: false
+  loadGeneration:
+    rampUpSeconds: 10
+    steadyStateSeconds: 40
+    rampDownSeconds: 10
+    targetThroughput: "AUTO"
+
+workload:
+  tables:
+    - name: "users"
+      rowCount: 10000
+    - name: "orders"
+      rowCount: 50000
+    - name: "products"
+      rowCount: 1000
+  
+  operations:
+    simpleSelect:
+      weight: 50
+      query: "SELECT * FROM users WHERE id = ?"
+    
+    insert:
+      weight: 30
+      query: "INSERT INTO orders (user_id, product_id, amount) VALUES (?, ?, ?)"
+    
+    update:
+      weight: 20
+      query: "UPDATE users SET last_login = NOW() WHERE id = ?"
+
+metrics:
+  collectionIntervalMs: 1000
+  percentiles: [0.5, 0.90, 0.95, 0.99]
+  detailedMetrics:
+    connectionPool: true
+    queryPerformance: true
+    regionalComparison: false
+    errorTracking: true
+    resourceUtilization: true
+  export:
+    prometheus:
+      enabled: false
+      port: 9090
+    json:
+      enabled: true
+      path: "results/"
+    html:
+      enabled: false
+      path: "results/"
+
+analysis:
+  sweetSpot:
+    maxLatencyP99: 50
+    minThroughput: 100
+    maxErrorRate: 1.0
+    targetUtilization: "60-80"
+    costWeight: 0.3
+    performanceWeight: 0.7
+  recommendations:
+    includePerformanceTrends: true
+    includeResourceProjections: false
+    includeRegionalOptimization: false
+    includeFailoverScenarios: false
+
+scenarios:
+  stressTest:
+    enabled: false
+    parameters: {}
+  enduranceTest:
+    enabled: false
+    parameters: {}
+  spikeTest:
+    enabled: false
+    parameters: {}
+  failoverTest:
+    enabled: false
+    simulateRegionFailure: false
+    failoverRegion: ""
+
+logging:
+  level: "INFO"
+  outputPath: "logs/"
+  includeQueryLogs: false
+  includeConnectionLogs: true

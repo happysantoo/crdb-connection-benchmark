@@ -1,0 +1,141 @@
+# CockroachDB Connection Benchmark Configuration
+
+regions:
+  - name: us-east
+    jdbcUrl: jdbc:postgresql://localhost:26257/defaultdb?sslmode=disable
+    username: root
+    password: ""
+    datacenters:
+      - dc1
+  - name: us-west
+    jdbcUrl: jdbc:postgresql://localhost:26258/defaultdb?sslmode=disable
+    username: root
+    password: ""
+    datacenters:
+      - dc1
+  - name: eu-west
+    jdbcUrl: jdbc:postgresql://localhost:26259/defaultdb?sslmode=disable
+    username: root
+    password: ""
+    datacenters:
+      - dc1
+
+connectionPool:
+  testPoolSizes:
+    - 5
+    - 10
+    - 20
+    - 30
+  hikari:
+    connectionTimeout: 30000
+    idleTimeout: 600000
+    maxLifetime: 1800000
+    minimumIdle: 2
+    leakDetectionThreshold: 60000
+  distributionStrategy: ROUND_ROBIN
+
+benchmark:
+  durationSeconds: 30
+  warmupSeconds: 5
+  cooldownSeconds: 5
+  iterations: 1
+  workloadPatterns:
+    - READ_HEAVY
+    - WRITE_HEAVY
+    - MIXED
+  virtualThreads:
+    enabled: true
+    maxConcurrency: 1000
+    structuredConcurrency: false
+  loadGeneration:
+    rampUpSeconds: 5
+    steadyStateSeconds: 20
+    rampDownSeconds: 5
+    targetThroughput: MAX
+
+workload:
+  # Actual tables created by DatabaseSetup
+  tables:
+    - name: users
+      rowCount: 100000
+    - name: products
+      rowCount: 10000
+    - name: orders
+      rowCount: 0
+  # Operations use actual tables (users, products, orders)
+  # Note: OperationFactory ignores these queries and uses hardcoded queries with correct ID ranges
+  operations:
+    SELECT:
+      weight: 70
+      query: SELECT * FROM users WHERE id = ?
+    INSERT:
+      weight: 20
+      query: INSERT INTO orders (user_id, product_id, amount, order_date) VALUES (?, ?, ?, NOW())
+    UPDATE:
+      weight: 10
+      query: UPDATE users SET last_login = NOW() WHERE id = ?
+
+metrics:
+  collectionIntervalMs: 1000
+  percentiles:
+    - 0.5
+    - 0.95
+    - 0.99
+    - 0.999
+  detailedMetrics:
+    connectionPool: true
+    queryPerformance: true
+    regionalComparison: true
+    errorTracking: true
+    resourceUtilization: true
+  export:
+    prometheus:
+      enabled: false
+      port: 9090
+    json:
+      enabled: true
+      path: results/metrics.json
+    html:
+      enabled: true
+      path: results/report.html
+
+analysis:
+  sweetSpot:
+    maxLatencyP99: 100.0
+    minThroughput: 100
+    maxErrorRate: 0.05
+    targetUtilization: 70-80
+    costWeight: 0.3
+    performanceWeight: 0.7
+  recommendations:
+    includePerformanceTrends: true
+    includeResourceProjections: true
+    includeRegionalOptimization: true
+    includeFailoverScenarios: true
+
+scenarios:
+  stressTest:
+    enabled: false
+    parameters:
+      maxConcurrency: 5000
+      duration: 300
+  enduranceTest:
+    enabled: false
+    parameters:
+      duration: 3600
+      concurrency: 500
+  spikeTest:
+    enabled: false
+    parameters:
+      spikeDuration: 60
+      steadyDuration: 120
+  failoverTest:
+    enabled: false
+    simulateRegionFailure: false
+    failoverRegion: us-west
+
+logging:
+  level: INFO
+  outputPath: logs/benchmark.log
+  includeQueryLogs: true
+  includeConnectionLogs: true

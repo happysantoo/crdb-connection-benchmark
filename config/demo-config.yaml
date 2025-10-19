@@ -1,0 +1,121 @@
+# Demo configuration for local CockroachDB cluster
+
+regions:
+  - name: us-east
+    jdbcUrl: "jdbc:postgresql://localhost:26257/benchmark?sslmode=disable&application_name=benchmark"
+    username: "root"
+    password: ""
+    datacenters:
+      - dc1
+
+connectionPool:
+  testPoolSizes: [5, 10, 25, 50]
+  hikari:
+    connectionTimeout: 30000
+    idleTimeout: 600000
+    maxLifetime: 1800000
+    minimumIdle: 2
+    leakDetectionThreshold: 60000
+  distributionStrategy: "EQUAL"
+
+benchmark:
+  durationSeconds: 30
+  warmupSeconds: 5
+  cooldownSeconds: 5
+  iterations: 1
+  workloadPatterns:
+    - READ_HEAVY
+    - MIXED
+  virtualThreads:
+    enabled: true
+    maxConcurrency: 1000
+    structuredConcurrency: false
+  loadGeneration:
+    rampUpSeconds: 5
+    steadyStateSeconds: 20
+    rampDownSeconds: 5
+    targetThroughput: "AUTO"
+
+workload:
+  tables:
+    - name: "users"
+      rowCount: 10000
+    - name: "orders"
+      rowCount: 50000
+    - name: "products"
+      rowCount: 1000
+  
+  operations:
+    simpleSelect:
+      weight: 50
+      query: "SELECT * FROM users WHERE id = ?"
+    
+    complexSelect:
+      weight: 20
+      query: "SELECT u.*, COUNT(o.id) FROM users u LEFT JOIN orders o ON u.id = o.user_id WHERE u.id = ? GROUP BY u.id"
+    
+    insert:
+      weight: 20
+      query: "INSERT INTO orders (user_id, product_id, amount) VALUES (?, ?, ?)"
+    
+    update:
+      weight: 10
+      query: "UPDATE users SET last_login = NOW() WHERE id = ?"
+
+metrics:
+  collectionIntervalMs: 500
+  percentiles: [0.5, 0.90, 0.95, 0.99]
+  detailedMetrics:
+    connectionPool: true
+    queryPerformance: true
+    regionalComparison: true
+    errorTracking: true
+    resourceUtilization: true
+  export:
+    prometheus:
+      enabled: false
+      port: 9090
+    opentelemetry:
+      enabled: true
+      endpoint: "http://localhost:4318/v1/metrics"
+    json:
+      enabled: true
+      path: "results/"
+    html:
+      enabled: false
+      path: "results/"
+
+analysis:
+  sweetSpot:
+    maxLatencyP99: 100
+    minThroughput: 100
+    maxErrorRate: 1.0
+    targetUtilization: "60-85"
+    costWeight: 0.3
+    performanceWeight: 0.7
+  recommendations:
+    includePerformanceTrends: true
+    includeResourceProjections: true
+    includeRegionalOptimization: true
+    includeFailoverScenarios: false
+
+scenarios:
+  stressTest:
+    enabled: false
+    parameters: {}
+  enduranceTest:
+    enabled: false
+    parameters: {}
+  spikeTest:
+    enabled: false
+    parameters: {}
+  failoverTest:
+    enabled: false
+    simulateRegionFailure: false
+    failoverRegion: ""
+
+logging:
+  level: "INFO"
+  outputPath: "logs/"
+  includeQueryLogs: false
+  includeConnectionLogs: false

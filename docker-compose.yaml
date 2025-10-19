@@ -1,0 +1,120 @@
+version: '3.9'
+
+services:
+  # CockroachDB Node 1 (us-east region) - Bootstrap node
+  crdb-us-east:
+    image: cockroachdb/cockroach:v24.2.4
+    container_name: crdb-us-east
+    hostname: crdb-us-east
+    command: start --insecure --join=crdb-us-east:26257,crdb-us-west:26257,crdb-eu-west:26257 --advertise-addr=crdb-us-east:26257 --http-addr=:8080 --locality=region=us-east,datacenter=dc1 --store=node1
+    ports:
+      - "26257:26257"
+      - "8080:8080"
+    volumes:
+      - crdb-us-east-data:/cockroach/cockroach-data
+    networks:
+      - crdb-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health?ready=1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  # CockroachDB Node 2 (us-west region)
+  crdb-us-west:
+    image: cockroachdb/cockroach:v24.2.4
+    container_name: crdb-us-west
+    hostname: crdb-us-west
+    command: start --insecure --join=crdb-us-east:26257,crdb-us-west:26257,crdb-eu-west:26257 --advertise-addr=crdb-us-west:26257 --http-addr=:8080 --locality=region=us-west,datacenter=dc1 --store=node2
+    ports:
+      - "26258:26257"
+      - "8081:8080"
+    volumes:
+      - crdb-us-west-data:/cockroach/cockroach-data
+    networks:
+      - crdb-network
+    depends_on:
+      crdb-us-east:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health?ready=1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  # CockroachDB Node 3 (eu-west region)
+  crdb-eu-west:
+    image: cockroachdb/cockroach:v24.2.4
+    container_name: crdb-eu-west
+    hostname: crdb-eu-west
+    command: start --insecure --join=crdb-us-east:26257,crdb-us-west:26257,crdb-eu-west:26257 --advertise-addr=crdb-eu-west:26257 --http-addr=:8080 --locality=region=eu-west,datacenter=dc1 --store=node3
+    ports:
+      - "26259:26257"
+      - "8082:8080"
+    volumes:
+      - crdb-eu-west-data:/cockroach/cockroach-data
+    networks:
+      - crdb-network
+    depends_on:
+      crdb-us-east:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health?ready=1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  # Initialize cluster after all nodes are started
+  crdb-init:
+    image: cockroachdb/cockroach:v24.2.4
+    container_name: crdb-init
+    depends_on:
+      crdb-us-east:
+        condition: service_started
+      crdb-us-west:
+        condition: service_started
+      crdb-eu-west:
+        condition: service_started
+    command: >
+      bash -c "
+        echo 'Waiting for nodes to be discoverable...';
+        sleep 10;
+        echo 'Initializing cluster...';
+        ./cockroach init --insecure --host=crdb-us-east:26257;
+        echo 'Cluster initialized!';
+        echo 'Verifying cluster nodes...';
+        ./cockroach sql --insecure --host=crdb-us-east:26257 -e 'SELECT node_id, address, locality FROM crdb_internal.gossip_nodes;';
+        echo 'Creating benchmark database...';
+        ./cockroach sql --insecure --host=crdb-us-east:26257 -e 'CREATE DATABASE IF NOT EXISTS benchmark;';
+        echo 'Setup complete!';
+      "
+    networks:
+      - crdb-network
+    restart: "no"
+
+  # OpenTelemetry Collector (optional - for metrics visualization)
+  otel-collector:
+    image: otel/opentelemetry-collector:0.91.0
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # Prometheus metrics
+      - "13133:13133" # Health check
+    networks:
+      - crdb-network
+
+volumes:
+  crdb-us-east-data:
+  crdb-us-west-data:
+  crdb-eu-west-data:
+
+networks:
+  crdb-network:
+    driver: bridge

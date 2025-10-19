@@ -1,0 +1,202 @@
+# CockroachDB Connection Benchmark Configuration Template
+
+# Database Regions Configuration
+# Define all CockroachDB nodes across different regions
+regions:
+  - name: us-east-1
+    jdbcUrl: "jdbc:postgresql://us-east-1.crdb.example.com:26257/benchmark?sslmode=require&application_name=benchmark"
+    username: "benchmark_user"
+    password: "${CRDB_PASSWORD_US_EAST}"
+    # Optional: specific datacenter configurations
+    datacenters:
+      - dc1
+      - dc2
+    
+  - name: us-west-2
+    jdbcUrl: "jdbc:postgresql://us-west-2.crdb.example.com:26257/benchmark?sslmode=require&application_name=benchmark"
+    username: "benchmark_user"
+    password: "${CRDB_PASSWORD_US_WEST}"
+    datacenters:
+      - dc1
+      - dc2
+    
+  - name: eu-west-1
+    jdbcUrl: "jdbc:postgresql://eu-west-1.crdb.example.com:26257/benchmark?sslmode=require&application_name=benchmark"
+    username: "benchmark_user"
+    password: "${CRDB_PASSWORD_EU_WEST}"
+    datacenters:
+      - dc1
+
+# Connection Pool Configuration
+connectionPool:
+  # Test these pool sizes in sequence
+  testPoolSizes: [10, 25, 50, 100, 150, 200, 300, 500]
+  
+  # HikariCP specific settings
+  hikari:
+    connectionTimeout: 30000  # 30 seconds
+    idleTimeout: 600000       # 10 minutes
+    maxLifetime: 1800000      # 30 minutes
+    minimumIdle: 5
+    leakDetectionThreshold: 60000  # 1 minute
+    
+  # Per-region pool distribution strategy
+  distributionStrategy: "PROPORTIONAL"  # PROPORTIONAL, EQUAL, CUSTOM
+
+# Benchmark Configuration
+benchmark:
+  # Duration for each test scenario
+  durationSeconds: 300
+  warmupSeconds: 30
+  cooldownSeconds: 15
+  
+  # Number of iterations per pool size
+  iterations: 3
+  
+  # Workload patterns to test
+  workloadPatterns:
+    - READ_HEAVY      # 80% reads, 20% writes
+    - WRITE_HEAVY     # 20% reads, 80% writes
+    - MIXED           # 50% reads, 50% writes
+    - BATCH_INSERT    # Bulk insert operations
+    - COMPLEX_QUERY   # Multi-table joins
+  
+  # Virtual threads configuration
+  virtualThreads:
+    enabled: true
+    maxConcurrency: 10000  # Max concurrent virtual threads
+    structuredConcurrency: true
+  
+  # Load generation
+  loadGeneration:
+    rampUpSeconds: 60
+    steadyStateSeconds: 180
+    rampDownSeconds: 60
+    targetThroughput: AUTO  # AUTO or specific number (e.g., 10000)
+
+# Workload Scenarios
+workload:
+  # Table setup
+  tables:
+    - name: "users"
+      rowCount: 1000000
+    - name: "orders"
+      rowCount: 5000000
+    - name: "products"
+      rowCount: 100000
+  
+  # Operation mix
+  operations:
+    simpleSelect:
+      weight: 40
+      query: "SELECT * FROM users WHERE id = ?"
+    
+    complexSelect:
+      weight: 20
+      query: "SELECT u.*, COUNT(o.id) FROM users u LEFT JOIN orders o ON u.id = o.user_id WHERE u.region = ? GROUP BY u.id"
+    
+    insert:
+      weight: 20
+      query: "INSERT INTO orders (user_id, product_id, amount) VALUES (?, ?, ?)"
+    
+    update:
+      weight: 15
+      query: "UPDATE users SET last_login = NOW() WHERE id = ?"
+    
+    delete:
+      weight: 5
+      query: "DELETE FROM orders WHERE id = ? AND created_at < NOW() - INTERVAL '1 year'"
+
+# Metrics Configuration
+metrics:
+  # Metrics collection interval
+  collectionIntervalMs: 1000
+  
+  # Latency percentiles to track
+  percentiles: [0.5, 0.75, 0.90, 0.95, 0.99, 0.999]
+  
+  # Enable detailed metrics
+  detailedMetrics:
+    connectionPool: true
+    queryPerformance: true
+    regionalComparison: true
+    errorTracking: true
+    resourceUtilization: true
+  
+  # Export configuration
+  export:
+    prometheus:
+      enabled: false
+      port: 9090
+    opentelemetry:
+      enabled: true
+      endpoint: "http://localhost:4318/v1/metrics"  # OTLP HTTP endpoint
+    json:
+      enabled: true
+      path: "results/"
+    html:
+      enabled: true
+      path: "results/"
+
+# Analysis Configuration
+analysis:
+  # Sweet spot detection criteria
+  sweetSpot:
+    # Maximum acceptable latency (ms)
+    maxLatencyP99: 50
+    
+    # Minimum acceptable throughput (ops/sec)
+    minThroughput: 1000
+    
+    # Maximum acceptable error rate (%)
+    maxErrorRate: 0.1
+    
+    # Target connection utilization (%)
+    targetUtilization: 70-85
+    
+    # Cost efficiency weight (0-1)
+    costWeight: 0.3
+    
+    # Performance weight (0-1)
+    performanceWeight: 0.7
+  
+  # Recommendation engine
+  recommendations:
+    includePerformanceTrends: true
+    includeResourceProjections: true
+    includeRegionalOptimization: true
+    includeFailoverScenarios: true
+
+# Testing Scenarios
+scenarios:
+  # Stress test: Find breaking point
+  stressTest:
+    enabled: true
+    incrementalLoad: true
+    maxConnections: 1000
+    
+  # Endurance test: Long-running stability
+  enduranceTest:
+    enabled: false
+    durationHours: 24
+    connectionPoolSize: AUTO  # Use recommended from stress test
+    
+  # Spike test: Sudden traffic bursts
+  spikeTest:
+    enabled: true
+    baselineLoad: 100
+    spikeLoad: 500
+    spikeDurationSeconds: 60
+    
+  # Regional failover test
+  failoverTest:
+    enabled: false
+    simulateRegionFailure: true
+    failoverRegion: "us-east-1"
+
+# Logging Configuration
+logging:
+  level: INFO  # DEBUG, INFO, WARN, ERROR
+  outputPath: "logs/"
+  includeQueryLogs: false
+  includeConnectionLogs: true
